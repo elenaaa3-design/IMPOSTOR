@@ -275,9 +275,34 @@ function listenToGame(code){
     }
 
     // Odotus
-    if(data.gameState === 'waiting'){
-      hideAll();
-      document.getElementById('waiting').classList.remove('hidden');
+    // Äänestystilat
+const votes = data.votes || {};
+const hasVoted = !!votes[playerId];
+
+// Jos kaikki ovat äänestäneet → tulokset
+if(data.gameState === 'results'){
+  hideAll();
+  alert('Kaikki äänestivät! Tulokset tehdään seuraavaksi.');
+}
+
+// Jos minä olen äänestänyt → odota
+else if(hasVoted){
+
+  hideAll();
+  document.getElementById('waiting').classList.remove('hidden');
+
+  const count = Object.keys(votes).length;
+  const total = players.length;
+
+  document.getElementById('waitingText').textContent =
+    `${count}/${total} pelaajaa äänestänyt`;
+}
+
+// Jos äänestys on käynnissä eikä minä ole äänestänyt
+else if(data.gameState === 'voting'){
+
+  showVoting();
+}
 
       const count = Object.keys(data.votes || {}).length;
       const total = players.length;
@@ -505,6 +530,40 @@ function showVoting(){
 }
 
 async function submitVote(targetId){
+
+  const gameRef = doc(db,'games',currentGameCode);
+  const snap = await getDoc(gameRef);
+
+  const data = snap.data();
+  const votes = data.votes || {};
+
+  // Estä tuplaäänestys
+  if(votes[playerId]) return;
+
+  // Tallenna oma ääni
+  votes[playerId] = targetId;
+
+  const voteCount = Object.keys(votes).length;
+  const totalPlayers = (data.players || []).length;
+
+  // Päätä uusi pelitila
+  const newState =
+    voteCount >= totalPlayers
+      ? 'results'
+      : 'voting';
+
+  await updateDoc(gameRef, {
+    votes,
+    gameState: newState
+  });
+
+  // Näytä odotus heti vain minulle
+  hideAll();
+  document.getElementById('waiting').classList.remove('hidden');
+
+  document.getElementById('waitingText').textContent =
+    `${voteCount}/${totalPlayers} pelaajaa äänestänyt`;
+}
 
   const gameRef = doc(db,'games',currentGameCode);
   const snap = await getDoc(gameRef);
