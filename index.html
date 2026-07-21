@@ -239,7 +239,8 @@ let currentRound = 1;
 const totalRounds = 6;
 let currentImpostor = '';
 let currentGameCode = '';
-
+const playerId = localStorage.playerId || crypto.randomUUID();
+localStorage.playerId = playerId;
 /* ================= HELPERS ================= */
 
 function hideAll(){
@@ -278,6 +279,86 @@ function renderScores(){
 /* ================= CREATE GAME ================= */
 
 async function createGame(){
+
+  const hostName = document.getElementById('name').value.trim();
+
+  if(!hostName){
+    alert('Kirjoita nimesi');
+    return;
+  }
+
+  const code = Math.random()
+    .toString(36)
+    .substring(2,8)
+    .toUpperCase();
+
+  currentGameCode = code;
+
+  players = [{
+    id: playerId,
+    name: hostName
+  }];
+
+  scores = {};
+  scores[playerId] = {
+    name: hostName,
+    points: 0
+  };
+
+  await setDoc(doc(db, 'games', code), {
+    code,
+    players,
+    scores,
+    currentRound: 1,
+    totalRounds,
+    gameState: 'lobby'
+  });
+
+  document.getElementById('gameCode').textContent = code;
+
+  renderPlayers();
+
+  hideAll();
+  document.getElementById('lobby').classList.remove('hidden');
+
+  listenToGame(code);
+  function showMyRole(roleData){
+
+  document.getElementById('roundInfo').textContent =
+    `Kierros ${currentRound}/${totalRounds}`;
+
+  const card = document.getElementById('roleCard');
+
+  if(roleData.impostor){
+
+    card.className = 'role impostor';
+
+    card.innerHTML = `
+      <h2>❌ IMPOSTOR</h2>
+      <p>Et tiedä paikkaa. Yritä sulautua joukkoon.</p>
+    `;
+
+  } else {
+
+    card.className = 'role';
+
+    card.innerHTML = `
+      <div style="color:#6b7280;font-size:14px">PAIKKA</div>
+      <div style="font-size:28px;font-weight:800;margin:6px 0 18px">
+        ${roleData.place}
+      </div>
+
+      <div style="color:#6b7280;font-size:14px">ROOLI</div>
+      <div style="font-size:34px;font-weight:900">
+        ${roleData.role}
+      </div>
+    `;
+  }
+
+  hideAll();
+  document.getElementById('roleScreen').classList.remove('hidden');
+}
+}
 
   const hostName = document.getElementById('name').value.trim();
 
@@ -335,6 +416,52 @@ async function joinGame(){
   }
 
   const gameRef = doc(db, 'games', code);
+  const snap = await getDoc(gameRef);
+
+  if(!snap.exists()){
+    alert('Peliä ei löytynyt');
+    return;
+  }
+
+  const data = snap.data();
+  const existing = data.players || [];
+
+  // Estä sama puhelin liittymästä kahdesti
+  const already = existing.find(p => p.id === playerId);
+
+  if(!already){
+    existing.push({
+      id: playerId,
+      name
+    });
+
+    await updateDoc(gameRef, {
+      players: existing,
+      [`scores.${playerId}`]: {
+        name,
+        points: 0
+      }
+    });
+  }
+
+  currentGameCode = code;
+  document.getElementById('gameCode').textContent = code;
+
+  hideAll();
+  document.getElementById('lobby').classList.remove('hidden');
+
+  listenToGame(code);
+}
+
+  const name = document.getElementById('name').value.trim();
+  const code = document.getElementById('joinCode').value.trim().toUpperCase();
+
+  if(!name || !code){
+    alert('Kirjoita nimi ja pelikoodi');
+    return;
+  }
+
+  const gameRef = doc(db, 'games', code);
   const gameSnap = await getDoc(gameRef);
 
   if(!gameSnap.exists()){
@@ -355,6 +482,30 @@ async function joinGame(){
       players = data.players || [];
       scores = data.scores || {};
       renderPlayers();
+      function listenToGame(code){
+
+  onSnapshot(doc(db, 'games', code), (snap) => {
+
+    if(!snap.exists()) return;
+
+    const data = snap.data();
+
+    players = data.players || [];
+    scores = data.scores || {};
+
+    renderPlayers();
+
+    // Jos peli on käynnissä ja minulla on rooli
+    if(data.gameState === 'playing' && data.roles){
+
+      const myRole = data.roles[playerId];
+
+      if(myRole){
+        showMyRole(myRole);
+      }
+    }
+  });
+}
     }
   });
 
@@ -366,7 +517,61 @@ async function joinGame(){
 
 /* ================= ROUND ================= */
 
-function startRound(){
+  async function startRound(){
+
+  // Vain host aloittaa
+  const gameRef = doc(db, 'games', currentGameCode);
+  const snap = await getDoc(gameRef);
+
+  if(!snap.exists()) return;
+
+  const data = snap.data();
+  const currentPlayers = data.players || [];
+
+  if(currentPlayers.length < 3){
+    alert('Tarvitaan vähintään 3 pelaajaa');
+    return;
+  }
+
+  // Arvo paikka
+  const place = places[Math.floor(Math.random()*places.length)];
+
+  // Arvo impostor
+  const impostorIndex = Math.floor(Math.random()*currentPlayers.length);
+  const impostorId = currentPlayers[impostorIndex].id;
+
+  // Sekoita roolit
+  const shuffledRoles = [...place.roles]
+    .sort(() => Math.random() - 0.5);
+
+  const roles = {};
+
+  currentPlayers.forEach((player, index) => {
+
+    if(player.id === impostorId){
+
+      roles[player.id] = {
+        impostor: true
+      };
+
+    } else {
+
+      roles[player.id] = {
+        impostor: false,
+        place: place.name,
+        role: shuffledRoles[index % shuffledRoles.length]
+      };
+    }
+  });
+
+  // Tallenna Firebaseen
+  await updateDoc(gameRef, {
+    gameState: 'playing',
+    roles,
+    impostorId,
+    currentRound
+  });
+}
 
   const place = places[Math.floor(Math.random()*places.length)];
 
