@@ -115,11 +115,23 @@ function hideAll(){
 
 function createGame(){
   const code = Math.random().toString(36).substring(2,8).toUpperCase();
+
+  const hostName = document.getElementById('name').value.trim();
+
+  if(!hostName){
+    alert('Kirjoita nimesi ennen pelin luomista');
+    return;
+  }
+
   document.getElementById('gameCode').textContent = code;
-  players = ['Elena','Sofia','Oona','Veera','Emma'];
+
+  // Aloita tyhjällä listalla ja lisää vain host
+  players = [hostName];
+
   renderPlayers();
   hideAll();
   document.getElementById('lobby').classList.remove('hidden');
+}
 }
 
 function joinGame(){
