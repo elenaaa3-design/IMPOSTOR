@@ -239,7 +239,9 @@ let currentRound = 1;
 const totalRounds = 6;
 let currentImpostor = '';
 let currentGameCode = '';
-const playerId = localStorage.playerId || crypto.randomUUID();
+const playerId = localStorage.getItem('playerId') || Date.now().toString(36) + Math.random().toString(36).slice(2);
+
+localStorage.setItem('playerId', playerId);
 localStorage.playerId = playerId;
 /* ================= HELPERS ================= */
 
